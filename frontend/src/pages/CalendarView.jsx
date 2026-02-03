@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import client from "../api/client";
 
 export default function CalendarView() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -21,99 +22,166 @@ export default function CalendarView() {
     load();
   }, []);
 
-  return (
-    <div className="h-full p-4 bg-gradient-to-br from-indigo-50 via-sky-50 to-emerald-50">
-      <div className="h-full flex flex-col rounded-2xl bg-white/90 backdrop-blur border shadow-md p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-sm font-semibold text-slate-700">
-            Scheduled interviews
-          </div>
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
 
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-            {items.length}
-          </span>
+    return items.filter((r) =>
+      String(r.id).toLowerCase().includes(q) ||
+      String(r.candidate_id).toLowerCase().includes(q) ||
+      String(r.interviewer_id).toLowerCase().includes(q)
+    );
+  }, [items, query]);
+
+  function formatTime(value) {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+  }
+
+  return (
+    <div className="h-full p-4 bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
+      <div className="h-full flex flex-col rounded-3xl bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-emerald-500/10 shadow-xl backdrop-blur">
+
+        
+        <div className="px-6 py-5">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-400 text-white flex items-center justify-center shadow-lg text-xl">
+              📅
+            </div>
+
+            <div className="flex-1">
+              <div className="text-lg font-semibold text-slate-900">
+                Scheduled interviews
+              </div>
+              <div className="text-xs text-slate-700">
+                Manage and monitor interview schedules
+              </div>
+            </div>
+
+            <div className="px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-indigo-400 to-cyan-400 text-white shadow">
+              {filtered.length}
+            </div>
+          </div>
         </div>
 
-        {loading && (
-          <div className="flex items-center gap-2 text-slate-500 text-xs">
-            <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 animate-bounce" />
-            <span className="h-2.5 w-2.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:150ms]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:300ms]" />
-            <span className="ml-2">Loading interviews…</span>
+        
+        <div className="px-6 pb-4">
+          <div className="relative">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by ID, candidate or interviewer..."
+              className="w-full h-11 rounded-2xl bg-gradient-to-r from-sky-100 to-indigo-100 pl-11 pr-4 text-sm text-slate-800 placeholder-slate-500 outline-none focus:ring-2 focus:ring-indigo-400 shadow-md"
+            />
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-600 text-lg">
+              🔍
+            </span>
           </div>
-        )}
+        </div>
 
-        {!loading && items.length === 0 && (
-          <div className="flex-1 flex items-center justify-center text-slate-400 text-xs">
-            No interviews scheduled
-          </div>
-        )}
+        
+        <div className="flex-1 px-6 pb-6">
+          <div className="h-full rounded-3xl bg-gradient-to-br from-indigo-100 via-sky-100 to-emerald-100 shadow-lg overflow-hidden">
 
-        {!loading && items.length > 0 && (
-          <div className="flex-1 overflow-auto rounded-xl border bg-white shadow-sm">
-            <table className="min-w-full text-xs">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-gradient-to-r from-indigo-50 to-cyan-50 text-slate-700">
-                  <th className="px-3 py-2 text-left font-semibold">ID</th>
-                  <th className="px-3 py-2 text-left font-semibold">
-                    Candidate
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold">
-                    Interviewer
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold">
-                    Scheduled time (UTC)
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold">
-                    Status
-                  </th>
-                </tr>
-              </thead>
+            {loading && (
+              <div className="p-6 space-y-3 animate-pulse">
+                {[...Array(6)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-8 rounded-xl bg-indigo-200/60"
+                  />
+                ))}
+              </div>
+            )}
 
-              <tbody>
-                {items.map((row, idx) => {
-                  const ok =
-                    row.status?.toLowerCase?.() === "scheduled";
+            {!loading && filtered.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-slate-600 text-sm gap-2">
+                <div className="text-4xl">🗂️</div>
+                No interviews found
+              </div>
+            )}
 
-                  return (
-                    <tr
-                      key={row.id}
-                      className={
-                        idx % 2 === 0
-                          ? "bg-white"
-                          : "bg-slate-50/60"
-                      }
-                    >
-                      <td className="px-3 py-2 border-t">
-                        {row.id}
-                      </td>
-                      <td className="px-3 py-2 border-t">
-                        {row.candidate_id}
-                      </td>
-                      <td className="px-3 py-2 border-t">
-                        {row.interviewer_id}
-                      </td>
-                      <td className="px-3 py-2 border-t whitespace-nowrap">
-                        {row.scheduled_time}
-                      </td>
-                      <td className="px-3 py-2 border-t">
-                        <span
-                          className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                            ok
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
+            {!loading && filtered.length > 0 && (
+              <div className="h-full overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-gradient-to-r from-indigo-400 via-sky-400 to-emerald-400 text-white">
+                      <th className="px-5 py-3 text-left font-semibold">
+                        ID
+                      </th>
+                      <th className="px-5 py-3 text-left font-semibold">
+                        Candidate
+                      </th>
+                      <th className="px-5 py-3 text-left font-semibold">
+                        Interviewer
+                      </th>
+                      <th className="px-5 py-3 text-left font-semibold">
+                        Time
+                      </th>
+                      <th className="px-5 py-3 text-left font-semibold">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filtered.map((row, idx) => {
+                      const ok =
+                        row.status?.toLowerCase?.() === "scheduled";
+
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`transition hover:scale-[1.005] hover:shadow-md ${
+                            idx % 2 === 0
+                              ? "bg-gradient-to-r from-indigo-50 to-sky-50"
+                              : "bg-gradient-to-r from-sky-50 to-emerald-50"
                           }`}
                         >
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          <td className="px-5 py-3 font-medium text-slate-800">
+                            {row.id}
+                          </td>
+
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-400 to-cyan-400 text-white flex items-center justify-center text-xs font-bold shadow">
+                                {String(row.candidate_id)[0]?.toUpperCase() || "C"}
+                              </div>
+                              <span className="text-slate-800">
+                                {row.candidate_id}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-3 text-slate-800">
+                            {row.interviewer_id}
+                          </td>
+
+                          <td className="px-5 py-3 whitespace-nowrap text-slate-700">
+                            {formatTime(row.scheduled_time)}
+                          </td>
+
+                          <td className="px-5 py-3">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
+                                ok
+                                  ? "bg-gradient-to-r from-emerald-400 to-green-400 text-white"
+                                  : "bg-gradient-to-r from-amber-400 to-orange-400 text-white"
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,5 @@
 from typing import Dict
-
 from openai import OpenAI
-
 from app.config import OPENAI_API_KEY
 
 ALLOWED_INTENTS = {"schedule", "reschedule", "cancel", "inquiry"}

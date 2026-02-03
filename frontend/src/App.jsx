@@ -9,39 +9,41 @@ function App() {
   const isCalendar = page === "calendar";
 
   return (
-    <div
-      className="h-screen flex flex-col
-      bg-gradient-to-br
-      from-indigo-100 via-sky-100 to-emerald-100"
-    >
-      <div className="border-b bg-white/85 backdrop-blur px-3 py-2 flex items-center justify-between shadow-sm">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
+      <div
+        className="
+          px-4 py-3 flex items-center justify-between
+          bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-500
+          shadow-xl
+        "
+      >
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setPage('assistant')}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition
+            onClick={() => setPage("assistant")}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow
               ${
                 isAssistant
-                  ? "bg-gradient-to-r from-indigo-600 to-cyan-500 text-white shadow"
-                  : "bg-white border text-slate-600 hover:bg-slate-50"
+                  ? "bg-white/30 text-white backdrop-blur"
+                  : "bg-white/10 text-white/80 hover:bg-white/20 backdrop-blur"
               }`}
           >
-            Interview assistant
+            🤖 Assistant
           </button>
 
           <button
-            onClick={() => setPage('calendar')}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition
+            onClick={() => setPage("calendar")}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition shadow
               ${
                 isCalendar
-                  ? "bg-gradient-to-r from-indigo-600 to-cyan-500 text-white shadow"
-                  : "bg-white border text-slate-600 hover:bg-slate-50"
+                  ? "bg-white/30 text-white backdrop-blur"
+                  : "bg-white/10 text-white/80 hover:bg-white/20 backdrop-blur"
               }`}
           >
-            Calendar
+            📅 Calendar
           </button>
         </div>
 
-        <div className="text-xs text-slate-500 hidden sm:block">
+        <div className="text-xs text-white/85 hidden sm:block">
           Interview scheduling console
         </div>
       </div>

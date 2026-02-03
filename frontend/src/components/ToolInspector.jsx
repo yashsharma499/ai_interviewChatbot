@@ -1,63 +1,68 @@
 export default function ToolInspector({ items }) {
   return (
-    <div
-      className="h-64 overflow-y-auto p-4
-      bg-gradient-to-br from-indigo-50 via-sky-50 to-emerald-50"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-slate-700">
-          Tool inspector
+    <div className="h-64 overflow-y-auto p-4 bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
+      <div className="h-full rounded-3xl bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-emerald-500/10 shadow-xl backdrop-blur p-4">
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-400 text-white flex items-center justify-center shadow">
+              🛠️
+            </div>
+            <div className="text-sm font-semibold text-slate-800">
+              Tool inspector
+            </div>
+          </div>
+
+          <span className="text-[11px] px-3 py-1 rounded-full font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 text-white shadow">
+            {items.length}
+          </span>
         </div>
 
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-          {items.length}
-        </span>
-      </div>
+        <div className="space-y-3">
+          {items.map((t, i) => {
+            const ok = t.status === "success";
 
-      <div className="space-y-3">
-        {items.map((t, i) => {
-          const ok = t.status === "success";
+            return (
+              <div
+                key={i}
+                className="rounded-2xl bg-gradient-to-br from-indigo-50/80 to-sky-50/80 shadow-md hover:shadow-lg transition overflow-hidden"
+              >
+                <div className="px-4 py-2 flex items-center justify-between bg-gradient-to-r from-emerald-400/20 to-cyan-400/20">
+                  <div className="text-xs font-semibold text-slate-800 truncate">
+                    {t.tool_name}
+                  </div>
 
-          return (
-            <div
-              key={i}
-              className="rounded-xl border border-slate-200/60 bg-white shadow-sm overflow-hidden transition hover:shadow-md"
-            >
-              <div className="px-3 py-2 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-cyan-50 border-b border-slate-200/60">
-                <div className="text-xs font-semibold text-slate-700 truncate">
-                  {t.tool_name}
-                </div>
-
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium
-                    ${
+                  <span
+                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold shadow ${
                       ok
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-rose-100 text-rose-700"
+                        ? "bg-gradient-to-r from-emerald-400 to-green-400 text-white"
+                        : "bg-gradient-to-r from-rose-400 to-pink-400 text-white"
                     }`}
-                >
-                  {t.status}
-                </span>
-              </div>
-
-              <div className="px-3 py-2">
-                <div className="text-[11px] text-slate-500 mb-2">
-                  {t.started_at} → {t.finished_at}
+                  >
+                    {t.status}
+                  </span>
                 </div>
 
-                <pre className="text-[11px] leading-snug bg-slate-50 border border-slate-200/60 rounded-lg p-2 overflow-x-auto">
-{JSON.stringify({ input: t.input }, null, 2)}
-                </pre>
-              </div>
-            </div>
-          );
-        })}
+                <div className="px-4 py-2">
+                  <div className="text-[11px] text-slate-600 mb-2">
+                    {t.started_at} → {t.finished_at}
+                  </div>
 
-        {items.length === 0 && (
-          <div className="h-24 flex items-center justify-center text-slate-400 text-xs">
-            No tools used yet
-          </div>
-        )}
+                  <pre className="text-[11px] leading-snug bg-gradient-to-br from-indigo-100 to-sky-100 rounded-xl p-3 overflow-x-auto text-slate-800 shadow-inner">
+{JSON.stringify({ input: t.input }, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            );
+          })}
+
+          {items.length === 0 && (
+            <div className="h-24 flex flex-col items-center justify-center text-slate-600 text-xs gap-2">
+              <div className="text-2xl">🧰</div>
+              No tools used yet
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

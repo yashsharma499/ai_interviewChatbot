@@ -5,12 +5,12 @@ import Timeline from "../components/Timeline";
 import ToolInspector from "../components/ToolInspector";
 
 export default function InterviewAssistant() {
-  const [activeAgent, setActiveAgent] = useState("-");
+  const [activeAgent, setActiveAgent] = useState("Idle");
   const [timeline, setTimeline] = useState([]);
   const [toolLogs, setToolLogs] = useState([]);
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-indigo-50 via-sky-50 to-emerald-50">
+    <div className="h-full flex flex-col bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
       <StatusBar activeAgent={activeAgent} />
 
       <div className="flex flex-1 overflow-hidden">
@@ -22,8 +22,8 @@ export default function InterviewAssistant() {
           />
         </div>
 
-        <div className="w-[380px] border-l bg-transparent flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto border-b">
+        <div className="w-[380px] flex flex-col overflow-hidden rounded-l-3xl shadow-xl bg-gradient-to-br from-indigo-200/60 via-sky-200/60 to-emerald-200/60 backdrop-blur">
+          <div className="flex-1 overflow-y-auto">
             <Timeline items={timeline} />
           </div>
 

@@ -10,11 +10,11 @@ export default function MessageList({ messages }) {
             className={`flex ${isUser ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[75%] px-4 py-2.5 text-sm leading-relaxed rounded-2xl shadow-sm
+              className={`max-w-[75%] px-4 py-2.5 text-sm leading-relaxed rounded-2xl shadow-md transition
                 ${
                   isUser
-                    ? "bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-500 text-white rounded-br-md"
-                    : "bg-white border border-slate-200 text-slate-700 rounded-bl-md"
+                    ? "bg-gradient-to-br from-indigo-500 via-sky-500 to-emerald-500 text-white rounded-br-md"
+                    : "bg-gradient-to-br from-indigo-100 via-sky-100 to-emerald-100 text-slate-800 rounded-bl-md"
                 }`}
             >
               <div className="whitespace-pre-wrap break-words">
@@ -23,9 +23,9 @@ export default function MessageList({ messages }) {
 
               {m.ts && (
                 <div
-                  className={`mt-1 text-[10px] ${
-                    isUser ? "text-white/70" : "text-slate-400"
-                  } text-right`}
+                  className={`mt-1 text-[10px] text-right ${
+                    isUser ? "text-white/80" : "text-slate-600"
+                  }`}
                 >
                   {new Date(m.ts).toLocaleTimeString([], {
                     hour: "2-digit",
