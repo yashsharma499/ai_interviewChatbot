@@ -5,6 +5,7 @@ from app.db.models import Interview, Candidate, Interviewer
 from app.tools.calendar_create_tool import calendar_create_tool
 from app.tools.notification_tool import notification_tool
 from app.tools.trace import tool_trace
+from app.tools.memory_tool import save_state
 
 
 class SchedulingAgent:
@@ -14,6 +15,7 @@ class SchedulingAgent:
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
 
         data = state.get("conversation_state", {})
+        conversation_id = state.get("conversation_id")
 
         candidate_id = data.get("candidate_id")
         interviewer_id = data.get("interviewer_id")
@@ -54,7 +56,8 @@ class SchedulingAgent:
                 "reply": "Sorry, I could not schedule the interview because some information is missing.",
                 "success": False,
                 "reason": "Missing required scheduling data",
-                "conversation_state": data
+                "conversation_state": data,
+                "is_complete": True
             }
 
         db = SessionLocal()
@@ -81,7 +84,8 @@ class SchedulingAgent:
                 "reply": "A database error occurred while creating your interview.",
                 "success": False,
                 "reason": "Database error while creating interview",
-                "conversation_state": data
+                "conversation_state": data,
+                "is_complete": True
             }
 
         create_input = {
@@ -108,7 +112,8 @@ class SchedulingAgent:
                 "reply": "I could not create the calendar event. Please try again.",
                 "success": False,
                 "reason": "Failed to create calendar event",
-                "conversation_state": data
+                "conversation_state": data,
+                "is_complete": True
             }
 
         notify_input = {
@@ -135,7 +140,8 @@ class SchedulingAgent:
                 "reply": "The interview was created, but I could not send notifications.",
                 "success": False,
                 "reason": "Notification failed",
-                "conversation_state": data
+                "conversation_state": data,
+                "is_complete": True
             }
 
         try:
@@ -146,11 +152,25 @@ class SchedulingAgent:
         finally:
             db.close()
 
+        
+        data.pop("preferred_datetime", None)
+        data.pop("preferred_datetime_utc", None)
+        data.pop("selected_time_utc", None)
+        data.pop("timezone", None)
+        data.pop("awaiting_field", None)
+        data.pop("reason", None)
+        data.pop("intent", None)
+
+        if conversation_id:
+            save_state(conversation_id, data)
+
         return {
             "agent": self.name,
             "reply": "Your interview has been successfully scheduled.",
             "success": True,
             "interview_id": interview_id,
             "scheduled_time_utc": scheduled_time,
-            "conversation_state": data
+            "conversation_state": data,
+            "is_complete": True,
+            "reason": None
         }

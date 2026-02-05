@@ -1,35 +1,31 @@
 from typing import TypedDict, Dict, Any
 from langgraph.graph import StateGraph, END
+
 from app.agents.intent_detection_agent import IntentDetectionAgent
 from app.agents.conversation_agent import ConversationAgent
 from app.agents.availability_agent import AvailabilityAgent
 from app.agents.scheduling_agent import SchedulingAgent
 from app.agents.reschedule_agent import RescheduleAgent
 from app.agents.cancellation_agent import CancellationAgent
+
 from app.tools.trace import agent_trace
+from app.tools.memory_tool import load_state
 
 
 class InterviewState(TypedDict, total=False):
     conversation_id: str
     user_message: str
-
     intent: str
-
+    confidence: float
     reply: str
     is_complete: bool
-
     conversation_state: Dict[str, Any]
-
     available: bool
     reason: str
-
     selected_time_utc: str
-
     interview_id: int
     new_time_utc: str
-
     success: bool
-
     trace: list
 
 
@@ -42,17 +38,22 @@ cancellation_agent = CancellationAgent()
 
 
 def intent_node(state: InterviewState) -> InterviewState:
-    existing_intent = (
-        (state.get("conversation_state") or {}).get("intent")
-        or state.get("intent")
-    )
 
-    if existing_intent:
+    state.pop("reason", None)
+
+    conversation_id = state.get("conversation_id")
+
+    stored = {}
+    if conversation_id:
+        stored = load_state(conversation_id) or {}
+
+    if stored.get("awaiting_field"):
         return state
 
     result = intent_agent.run(state)
     agent_trace(state, "IntentDetectionAgent", result)
     state.update(result)
+
     return state
 
 
@@ -102,40 +103,39 @@ def route_after_conversation(state: InterviewState) -> str:
 
     stored_state = state.get("conversation_state") or {}
 
-    stored_intent = (
-        stored_state.get("intent")
-        or state.get("intent")
-    )
+    intent = state.get("intent") or stored_state.get("intent")
 
-    if stored_intent == "inquiry":
+    if intent == "unknown":
         return END
 
-    if stored_intent == "schedule":
+    if intent == "inquiry":
+        return END
+
+    if intent == "schedule":
         return "availability"
 
-    if stored_intent == "reschedule":
+    if intent == "reschedule":
 
         if stored_state.get("awaiting_field"):
             return END
 
         if stored_state.get("interview_id") and not stored_state.get("preferred_datetime_utc"):
-            return "conversation"
+            return END
 
         if stored_state.get("preferred_datetime_utc"):
             return "reschedule"
 
         return END
 
-    if stored_intent == "cancel":
+    if intent == "cancel":
         return "cancel"
 
     return END
 
 
 def route_after_availability(state: InterviewState) -> str:
-    if state.get("available"):
+    if state.get("available") is True:
         return "scheduling"
-
     return "conversation"
 
 
@@ -166,7 +166,7 @@ def build_graph():
             "availability": "availability",
             "reschedule": "reschedule",
             "cancel": "cancel",
-            "conversation": "conversation",   
+            "conversation": "conversation",
             END: END,
         },
     )

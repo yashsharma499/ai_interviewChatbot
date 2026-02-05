@@ -4,19 +4,10 @@ from typing import Optional, Dict, Any
 import uuid
 
 from pydantic import BaseModel, Field, ValidationError
+from dateutil import parser
 
 
 TOOL_NAME = "timezone_tool"
-
-
-SUPPORTED_FORMATS = [
-    "%Y-%m-%d %H:%M",
-    "%Y-%m-%d %H:%M:%S",
-    "%Y-%m-%dT%H:%M",
-    "%Y-%m-%dT%H:%M:%S",
-    "%d %b %Y %I:%M %p",
-    "%d %B %Y %I:%M %p",
-]
 
 
 class TimezoneNormalizeInput(BaseModel):
@@ -89,17 +80,11 @@ def timezone_normalize_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
             ).model_dump()
 
-        parsed_dt = None
         clean_dt = data.datetime_str.strip()
 
-        for fmt in SUPPORTED_FORMATS:
-            try:
-                parsed_dt = datetime.strptime(clean_dt, fmt)
-                break
-            except ValueError:
-                continue
-
-        if not parsed_dt:
+        try:
+            parsed_dt = parser.parse(clean_dt)
+        except Exception:
             finished_at = datetime.utcnow().isoformat()
 
             return TimezoneNormalizeOutput(
@@ -117,7 +102,11 @@ def timezone_normalize_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
             ).model_dump()
 
-        local_dt = parsed_dt.replace(tzinfo=tz)
+        if parsed_dt.tzinfo is not None:
+            local_dt = parsed_dt.astimezone(tz)
+        else:
+            local_dt = parsed_dt.replace(tzinfo=tz)
+
         utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
 
         finished_at = datetime.utcnow().isoformat()

@@ -14,3 +14,29 @@ body {
 button {
   cursor: pointer;
 }
+
+/* global colored scrollbar (fix for your UI) */
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(180deg, #6366f1, #38bdf8, #34d399);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4f46e5, #0ea5e9, #10b981);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #38bdf8 rgba(255, 255, 255, 0.35);
+}

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from app.db.session import SessionLocal
-from app.db.models import Interview
+from app.db.models import Interview, Candidate
+
 router = APIRouter()
 
 @router.get("/interviews")
@@ -10,7 +11,8 @@ def list_scheduled_interviews():
 
     try:
         interviews = (
-            db.query(Interview)
+            db.query(Interview, Candidate)
+            .join(Candidate, Candidate.id == Interview.candidate_id)
             .filter(Interview.status == "scheduled")
             .order_by(Interview.scheduled_time.asc())
             .all()
@@ -20,6 +22,7 @@ def list_scheduled_interviews():
             {
                 "id": i.id,
                 "candidate_id": i.candidate_id,
+                "candidate_name": c.name,
                 "interviewer_id": i.interviewer_id,
                 "scheduled_time": (
                     i.scheduled_time.isoformat()
@@ -27,7 +30,7 @@ def list_scheduled_interviews():
                 ),
                 "status": i.status
             }
-            for i in interviews
+            for i, c in interviews
         ]
 
     finally:

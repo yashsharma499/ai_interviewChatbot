@@ -1,11 +1,13 @@
 from typing import Dict, Any
+from zoneinfo import ZoneInfo
 
 from app.db.session import SessionLocal
-from app.db.models import Interview
+from app.db.models import Interview, Candidate
 
 from app.tools.calendar_delete_tool import calendar_delete_tool
 from app.tools.notification_tool import notification_tool
 from app.tools.trace import tool_trace
+from app.tools.memory_tool import save_state
 
 
 class CancellationAgent:
@@ -17,16 +19,72 @@ class CancellationAgent:
         data = state.get("conversation_state") or {}
         data.setdefault("tool_traces", [])
 
-        interview_id = state.get("interview_id") or data.get("interview_id")
+        conversation_id = state.get("conversation_id")
 
+        interview_id = state.get("interview_id") or data.get("interview_id")
+        candidate_email = data.get("candidate_email")
+
+        
         if not interview_id:
+
+            if not candidate_email:
+                return {
+                    "agent": self.name,
+                    "reply": "Please share your email address so I can find your interview.",
+                    "is_complete": False,
+                    "conversation_state": data
+                }
+
+            db = SessionLocal()
+            try:
+                interviews = (
+                    db.query(Interview)
+                    .join(Candidate, Candidate.id == Interview.candidate_id)
+                    .filter(
+                        Candidate.email == candidate_email,
+                        Interview.status == "scheduled"
+                    )
+                    .order_by(Interview.scheduled_time)
+                    .all()
+                )
+            finally:
+                db.close()
+
+            if not interviews:
+                return {
+                    "agent": self.name,
+                    "reply": "No interview found for your account.",
+                    "is_complete": True,
+                    "conversation_state": data
+                }
+
+            lines = []
+            ids = []
+
+            for i, it in enumerate(interviews, 1):
+                if not it.scheduled_time:
+                    continue
+
+                ist_time = it.scheduled_time.astimezone(
+                    ZoneInfo("Asia/Kolkata")
+                ).strftime("%d/%m/%Y, %I:%M %p")
+
+                lines.append(f"{i}. {ist_time} with Default Interviewer")
+                ids.append(it.id)
+
+            data["cancel_candidates"] = ids
+
+            if conversation_id:
+                save_state(conversation_id, data)
+
             return {
                 "agent": self.name,
-                "reply": "Please select the interview you want to cancel first.",
+                "reply": "Please select the interview:\n" + "\n".join(lines),
                 "is_complete": False,
                 "conversation_state": data
             }
 
+       
         db = SessionLocal()
         try:
             interview = (
@@ -71,7 +129,8 @@ class CancellationAgent:
                 "agent": self.name,
                 "reply": delete_result.get("error", "Failed to cancel interview."),
                 "is_complete": True,
-                "conversation_state": data
+                "conversation_state": data,
+                "interview_id": interview_id
             }
 
         notify_input = {
@@ -101,6 +160,13 @@ class CancellationAgent:
 
         finally:
             db.close()
+
+        data.pop("interview_id", None)
+        data.pop("active_subflow", None)
+        data.pop("cancel_candidates", None)
+
+        if conversation_id:
+            save_state(conversation_id, data)
 
         return {
             "agent": self.name,

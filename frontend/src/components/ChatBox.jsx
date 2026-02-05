@@ -2,18 +2,57 @@ import { useEffect, useRef, useState } from "react";
 import client from "../api/client";
 import MessageList from "./MessageList";
 
+function uuid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
 export default function ChatBox({
   onAgentChange,
   onTimelineUpdate,
-  onToolLogsUpdate
+  onToolLogsUpdate,
+  timeline,
+  toolLogs,
+  activeAgent
 }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [conversationId, setConversationId] = useState(() =>
-    crypto.randomUUID()
-  );
+  const [conversationId, setConversationId] = useState(() => uuid());
   const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (messages.length !== 0) return;
+
+    const saved = localStorage.getItem("agent_chat_ui");
+    if (!saved) return;
+
+    try {
+      const s = JSON.parse(saved);
+
+      setMessages(s.messages || []);
+      setConversationId(s.conversationId || uuid());
+      onTimelineUpdate(s.timeline || []);
+      onToolLogsUpdate(s.toolLogs || []);
+      onAgentChange(s.activeAgent || "Idle");
+
+      restoredRef.current = true;
+    } catch {}
+  }, [messages.length]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "agent_chat_ui",
+      JSON.stringify({
+        messages,
+        conversationId,
+        timeline,
+        toolLogs,
+        activeAgent
+      })
+    );
+  }, [messages, conversationId, timeline, toolLogs, activeAgent]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -24,12 +63,19 @@ export default function ChatBox({
   }, [messages, loading]);
 
   function startNewConversation() {
-    setConversationId(crypto.randomUUID());
+    const newId = uuid();
+
+    setConversationId(newId);
     setMessages([]);
     setInput("");
+    setLoading(false);
+
     onAgentChange("Idle");
     onTimelineUpdate([]);
     onToolLogsUpdate([]);
+
+    localStorage.removeItem("agent_chat_ui");
+    restoredRef.current = false;
   }
 
   async function sendMessage() {
@@ -66,6 +112,7 @@ export default function ChatBox({
         onToolLogsUpdate(prev => [...prev, ...tools]);
       }
 
+      
       if (data.reply) {
         setMessages(prev => [
           ...prev,
@@ -73,16 +120,6 @@ export default function ChatBox({
         ]);
       }
 
-      if (data.success === true && data.interview_id) {
-        setMessages(prev => [
-          ...prev,
-          {
-            role: "assistant",
-            text: "Interview scheduled successfully.",
-            ts: Date.now()
-          }
-        ]);
-      }
     } catch {
       setMessages(prev => [
         ...prev,
@@ -120,10 +157,7 @@ export default function ChatBox({
         </button>
       </div>
 
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto px-5 py-4"
-      >
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-5 py-4">
         {messages.length === 0 && !loading && (
           <div className="h-full flex flex-col items-center justify-center text-slate-700 text-sm gap-2">
             <div className="text-3xl">🤖</div>
@@ -131,9 +165,7 @@ export default function ChatBox({
           </div>
         )}
 
-        {messages.length > 0 && (
-          <MessageList messages={messages} />
-        )}
+        {messages.length > 0 && <MessageList messages={messages} />}
 
         {loading && (
           <div className="flex items-center gap-2 mt-4">

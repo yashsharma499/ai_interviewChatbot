@@ -1,12 +1,17 @@
 from typing import Dict, Any, List
 import re
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import joinedload
+from openai import OpenAI
+
 from app.tools.memory_tool import load_state, save_state
 from app.tools.timezone_tool import timezone_normalize_tool
 from app.tools.trace import tool_trace
 from app.db.session import SessionLocal
 from app.db.models import Candidate, Interviewer, Interview
+
 
 REQUIRED_FIELDS = [
     "candidate_name",
@@ -15,10 +20,43 @@ REQUIRED_FIELDS = [
     "timezone"
 ]
 
+_openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
 class ConversationAgent:
 
     name = "ConversationAgent"
-    
+
+    def _is_valid_email(self, email: str) -> bool:
+        return bool(
+            re.fullmatch(
+                r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+                email
+            )
+        )
+
+    def _llm_reply(self, user_message: str) -> str:
+        system_prompt = (
+            "You are a helpful and concise interview scheduling assistant. "
+            "When the user greets for the first time, greet back, clearly say that you can help to schedule, reschedule or cancel interviews, and then ask for their full name. "
+            "If the user asks what you can do, explain you can schedule, reschedule or cancel interviews. "
+            "If the message is not related to interview scheduling, answer briefly and guide the user back to interview scheduling. "
+            "Keep responses short and professional."
+        )
+
+        try:
+            resp = _openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=0.3
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception:
+            return "I can help you schedule, reschedule or cancel interviews."
+
     def _normalize_tz(self, tz: str) -> str:
         tz = tz.strip()
 
@@ -49,26 +87,141 @@ class ConversationAgent:
         stored_state = load_state(conversation_id) or {}
         tool_trace(state, "load_state", conversation_id, stored_state)
 
+        current_intent = state.get("intent") or stored_state.get("intent")
+
+        if current_intent == "unknown":
+            save_state(conversation_id, stored_state)
+            return {
+                "agent": self.name,
+                "reply": "I can help you schedule, reschedule, or cancel an interview. What would you like to do?",
+                "is_complete": False,
+                "conversation_state": stored_state
+            }
+
+        if re.fullmatch(r"(ok|okay|no|yes|hmm|thanks|thank you)", user_message, re.I):
+            return {
+                "agent": self.name,
+                "reply": "Please tell me whether you want to schedule, reschedule, or cancel an interview.",
+                "is_complete": False,
+                "conversation_state": stored_state
+            }
+
         awaiting = stored_state.get("awaiting_field")
+
         if awaiting and user_message:
-            stored_state[awaiting] = user_message.strip()
+
+            if awaiting == "candidate_email":
+                if not self._is_valid_email(user_message.strip()):
+                    return {
+                        "agent": self.name,
+                        "reply": "Please enter a valid email address.",
+                        "is_complete": False,
+                        "conversation_state": stored_state
+                    }
+
+            if awaiting == "candidate_name":
+                m = re.search(r"([A-Za-z]+(?:\s+[A-Za-z]+)*)", user_message)
+                if not m:
+                    return {
+                        "agent": self.name,
+                        "reply": "Please enter only your full name.",
+                        "is_complete": False,
+                        "conversation_state": stored_state
+                    }
+                stored_state["candidate_name"] = m.group(1).strip()
+            else:
+                stored_state[awaiting] = user_message.strip()
+
             stored_state.pop("awaiting_field", None)
             save_state(conversation_id, stored_state)
 
-        current_intent = stored_state.get("intent") or state.get("intent")
+        if current_intent == "schedule" and not stored_state.get("preferred_datetime_utc"):
+            state["reason"] = None
+
         if current_intent:
             stored_state["intent"] = current_intent
+
+        if user_message and current_intent == "inquiry" and not stored_state.get("awaiting_field"):
+
+            if re.search(
+                r"\b(no|nah|nope|not now|not really|don't want|do not want|dont want|stop|leave it|later|cancel it|forget it|never mind|nevermind|nothing|nothing else|no thanks|not interested)\b",
+                user_message,
+                re.I
+            ):
+                save_state(conversation_id, stored_state)
+                return {
+                    "agent": self.name,
+                    "reply": "Okay. Let me know if you want to schedule, reschedule, or cancel an interview.",
+                    "is_complete": False,
+                    "conversation_state": stored_state
+                }
+
+            if re.fullmatch(r"(hi|hello|hey|hii|heyy)", user_message, re.I):
+                save_state(conversation_id, stored_state)
+                return {
+                    "agent": self.name,
+                    "reply": "Hello! I can help you schedule, reschedule, or cancel interviews.",
+                    "is_complete": False,
+                    "conversation_state": stored_state
+                }
+
+            if not re.search(r"\b(interview|interviews|my interviews|list)\b", user_message, re.I):
+                save_state(conversation_id, stored_state)
+                return {
+                    "agent": self.name,
+                    "reply": "I can help you schedule, reschedule, or cancel an interview. What would you like to do?",
+                    "is_complete": False,
+                    "conversation_state": stored_state
+                }
+
+            if not stored_state.get("candidate_email"):
+                stored_state["awaiting_field"] = "candidate_email"
+                save_state(conversation_id, stored_state)
+                return {
+                    "agent": self.name,
+                    "reply": "Please share your email address so I can list your interviews.",
+                    "is_complete": False,
+                    "conversation_state": stored_state
+                }
+
+            interviews = self._get_upcoming_interviews(stored_state["candidate_email"])
+
+            if not interviews:
+                save_state(conversation_id, stored_state)
+                return {
+                    "agent": self.name,
+                    "reply": "You do not have any upcoming interviews.",
+                    "is_complete": True,
+                    "conversation_state": stored_state
+                }
+
+            lines = []
+            for i, item in enumerate(interviews, 1):
+                ts = item.scheduled_time.astimezone(
+                    ZoneInfo("Asia/Kolkata")
+                ).strftime("%d/%m/%Y, %I:%M %p") if item.scheduled_time else ""
+                name = item.interviewer.name if item.interviewer else "Interviewer"
+                lines.append(f"{i}. {ts} with {name}")
+
+            save_state(conversation_id, stored_state)
+
+            return {
+                "agent": self.name,
+                "reply": "Here are your upcoming interviews:\n" + "\n".join(lines),
+                "is_complete": True,
+                "conversation_state": stored_state
+            }
 
         if user_message:
 
             if not stored_state.get("candidate_email"):
                 m = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', user_message)
-                if m:
+                if m and self._is_valid_email(m.group().strip()):
                     stored_state["candidate_email"] = m.group().strip()
 
             if not stored_state.get("candidate_name"):
                 m = re.search(
-                    r'for\s+([A-Za-z ]+?)(?:,|$)',
+                    r"(?:\bmy name is\b|\bi am\b|\bi'm\b|\bthis is\b|\bmyself\b|\bname is\b|\bcall me\b|\bit is\b|\bim\b)\s+([A-Za-z]+(?:\s+[A-Za-z]+){0,3})",
                     user_message,
                     re.IGNORECASE
                 )
@@ -99,7 +252,6 @@ class ConversationAgent:
             if not stored_state.get("candidate_email"):
                 stored_state["awaiting_field"] = "candidate_email"
                 save_state(conversation_id, stored_state)
-
                 return {
                     "agent": self.name,
                     "reply": "Please share your email address so I can find your interview.",
@@ -109,16 +261,14 @@ class ConversationAgent:
 
             if not stored_state.get("interview_id") and not stored_state.get("pending_interviews"):
 
-                interviews = self._get_upcoming_interviews(
-                    stored_state["candidate_email"]
-                )
+                interviews = self._get_upcoming_interviews(stored_state["candidate_email"])
 
                 if not interviews:
                     save_state(conversation_id, stored_state)
                     return {
                         "agent": self.name,
                         "reply": "I could not find any upcoming interviews for this email.",
-                        "is_complete": True,
+                        "is_complete": False,
                         "conversation_state": stored_state
                     }
 
@@ -135,9 +285,15 @@ class ConversationAgent:
 
                 lines = []
                 for idx, item in enumerate(stored_state["pending_interviews"], 1):
-                    lines.append(
-                        f"{idx}. {item['scheduled_time'].replace('T', ' ')} with {item['interviewer']}"
+                    ts = (
+                        datetime.fromisoformat(item["scheduled_time"])
+                        .replace(tzinfo=ZoneInfo("UTC"))
+                        .astimezone(ZoneInfo("Asia/Kolkata"))
+                        .strftime("%d/%m/%Y, %I:%M %p")
+                        if item["scheduled_time"] else ""
+                        
                     )
+                    lines.append(f"{idx}. {ts} with {item['interviewer']}")
 
                 save_state(conversation_id, stored_state)
 
@@ -176,8 +332,17 @@ class ConversationAgent:
                 stored_state.pop("pending_interviews", None)
                 stored_state.pop("interview_choice", None)
 
-                save_state(conversation_id, stored_state)
+                if current_intent == "reschedule":
+                    stored_state["awaiting_field"] = "new_preferred_datetime"
+                    save_state(conversation_id, stored_state)
+                    return {
+                        "agent": self.name,
+                        "reply": "Please tell me the new date and time for your interview. (Example: 2026-02-10 11:00)",
+                        "is_complete": False,
+                        "conversation_state": stored_state
+                    }
 
+                save_state(conversation_id, stored_state)
                 return {
                     "agent": self.name,
                     "reply": "Thanks. Processing your request...",
@@ -190,7 +355,6 @@ class ConversationAgent:
                 if not stored_state.get("new_preferred_datetime"):
                     stored_state["awaiting_field"] = "new_preferred_datetime"
                     save_state(conversation_id, stored_state)
-
                     return {
                         "agent": self.name,
                         "reply": "Please tell me the new date and time for your interview. (Example: 2026-02-10 11:00)",
@@ -201,7 +365,6 @@ class ConversationAgent:
                 if not stored_state.get("new_timezone"):
                     stored_state["awaiting_field"] = "new_timezone"
                     save_state(conversation_id, stored_state)
-
                     return {
                         "agent": self.name,
                         "reply": "Please tell me your timezone for the new time. (Example: Asia/Kolkata)",
@@ -227,7 +390,6 @@ class ConversationAgent:
                     stored_state.pop("new_timezone", None)
                     stored_state["awaiting_field"] = "new_timezone"
                     save_state(conversation_id, stored_state)
-
                     return {
                         "agent": self.name,
                         "reply": "I could not understand your timezone. Please re-enter your timezone.",
@@ -236,13 +398,27 @@ class ConversationAgent:
                     }
 
                 stored_state["preferred_datetime_utc"] = tz_result["utc_datetime"]
+
+                if datetime.utcnow() >= datetime.fromisoformat(stored_state["preferred_datetime_utc"]):
+                    stored_state.pop("preferred_datetime_utc", None)
+                    stored_state.pop("new_preferred_datetime", None)
+                    stored_state["awaiting_field"] = "new_preferred_datetime"
+                    save_state(conversation_id, stored_state)
+                    return {
+                        "agent": self.name,
+                        "reply": "The selected new date and time is in the past. Please provide a future date and time.",
+                        "is_complete": False,
+                        "conversation_state": stored_state
+                    }
+
                 save_state(conversation_id, stored_state)
 
                 return {
                     "agent": self.name,
                     "reply": "Thanks. Processing your reschedule request...",
                     "is_complete": True,
-                    "conversation_state": stored_state
+                    "conversation_state": stored_state,
+                    "new_time_utc": stored_state["preferred_datetime_utc"]
                 }
 
             return {
@@ -252,12 +428,29 @@ class ConversationAgent:
                 "conversation_state": stored_state
             }
 
-        if state.get("reason") == "no_available_slot":
-
+        if (
+            current_intent == "schedule"
+            and state.get("reason") == "past_time"
+            and stored_state.get("preferred_datetime_utc")
+        ):
             stored_state.pop("preferred_datetime_utc", None)
             stored_state["awaiting_field"] = "preferred_datetime"
             save_state(conversation_id, stored_state)
+            return {
+                "agent": self.name,
+                "reply": "The selected date and time is in the past. Please provide a future date and time.",
+                "is_complete": False,
+                "conversation_state": stored_state
+            }
 
+        if (
+            current_intent == "schedule"
+            and state.get("reason") == "no_available_slot"
+            and stored_state.get("preferred_datetime_utc")
+        ):
+            stored_state.pop("preferred_datetime_utc", None)
+            stored_state["awaiting_field"] = "preferred_datetime"
+            save_state(conversation_id, stored_state)
             return {
                 "agent": self.name,
                 "reply": "No interview slots are available at the selected time. Please suggest another date and time.",
@@ -265,12 +458,12 @@ class ConversationAgent:
                 "conversation_state": stored_state
             }
 
-        if current_intent == "inquiry" and not stored_state:
+        if current_intent != "schedule":
             save_state(conversation_id, stored_state)
             return {
                 "agent": self.name,
-                "reply": "How can I help you?",
-                "is_complete": True,
+                "reply": "How can I help you with interview scheduling?",
+                "is_complete": False,
                 "conversation_state": stored_state
             }
 
@@ -280,7 +473,6 @@ class ConversationAgent:
             field = missing[0]
             stored_state["awaiting_field"] = field
             save_state(conversation_id, stored_state)
-
             return {
                 "agent": self.name,
                 "reply": self._question_for_field(field),
@@ -305,13 +497,12 @@ class ConversationAgent:
         tool_trace(state, "timezone_tool", tool_input, tz_result)
 
         if not tz_result.get("success"):
-            stored_state.pop("timezone", None)
-            stored_state["awaiting_field"] = "timezone"
+            stored_state.pop("preferred_datetime", None)
+            stored_state["awaiting_field"] = "preferred_datetime"
             save_state(conversation_id, stored_state)
-
             return {
                 "agent": self.name,
-                "reply": "I could not understand your timezone. Please re-enter your timezone (for example: Asia/Kolkata).",
+                "reply": "I could not understand the date and time. Please enter it like: 2026-02-13 11:00",
                 "is_complete": False,
                 "conversation_state": stored_state
             }
@@ -328,7 +519,8 @@ class ConversationAgent:
             "agent": self.name,
             "reply": "Thanks. Checking available slots for your interview...",
             "is_complete": True,
-            "conversation_state": stored_state
+            "conversation_state": stored_state,
+            "selected_time_utc": stored_state["preferred_datetime_utc"]
         }
 
     def _get_upcoming_interviews(self, email: str) -> List[Interview]:
@@ -406,3 +598,5 @@ class ConversationAgent:
 
         if field == "timezone":
             return "Please tell me your timezone (for example: Asia/Kolkata)."
+
+        return "Please provide the required information."

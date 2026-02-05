@@ -1,10 +1,93 @@
+import { useEffect, useRef, useState } from "react";
+
 export default function Timeline({ items }) {
-  const agentItems = (items || []).filter(t => t.type === "agent");
+  const [value, setValue] = useState(items || []);
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if ((items || []).length !== 0) return;
+
+    const saved = localStorage.getItem("agent_chat_ui");
+    if (!saved) return;
+
+    try {
+      const s = JSON.parse(saved);
+      if (Array.isArray(s.timeline)) {
+        setValue(s.timeline);
+        restoredRef.current = true;
+      }
+    } catch {}
+  }, [items?.length]);
+
+  useEffect(() => {
+    if (!Array.isArray(items)) return;
+
+    setValue(items);
+
+    if (items.length === 0) {
+      restoredRef.current = false;
+    }
+  }, [items]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("agent_chat_ui");
+    if (!saved) return;
+
+    try {
+      const s = JSON.parse(saved);
+      s.timeline = value;
+      localStorage.setItem("agent_chat_ui", JSON.stringify(s));
+    } catch {}
+  }, [value]);
+
+  const agentItems = (value || []).filter(t => t.type === "agent");
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
-      <div className="h-full rounded-3xl bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-emerald-500/10 shadow-xl backdrop-blur p-4">
+    <div className="custom-scroll flex-1 overflow-y-auto p-4 bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
+      <style>{`
+        .custom-scroll::-webkit-scrollbar {
+          width: 12px;
+        }
 
+        .custom-scroll::-webkit-scrollbar-track {
+          background: linear-gradient(
+            180deg,
+            rgba(99,102,241,0.15),
+            rgba(56,189,248,0.15),
+            rgba(52,211,153,0.15)
+          );
+          border-radius: 999px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: linear-gradient(
+            180deg,
+            #6366f1,
+            #38bdf8,
+            #34d399
+          );
+          border: 3px solid rgba(255,255,255,0.6);
+          background-clip: padding-box;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(
+            180deg,
+            #4f46e5,
+            #0ea5e9,
+            #10b981
+          );
+        }
+
+        .custom-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #38bdf8 rgba(99,102,241,0.15);
+        }
+      `}</style>
+
+      <div className="h-full rounded-3xl bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-emerald-500/10 shadow-xl backdrop-blur p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 text-white flex items-center justify-center shadow">

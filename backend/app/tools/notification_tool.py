@@ -1,6 +1,10 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
 import uuid
+import os
+import smtplib
+from email.mime.text import MIMEText
+import time
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -40,6 +44,27 @@ class NotificationOutput(BaseModel):
     trace: ToolTrace
 
 
+def _send_email(to_email: str, subject: str, body: str):
+    host = os.getenv("MAILTRAP_HOST", "sandbox.smtp.mailtrap.io")
+    port = int(os.getenv("MAILTRAP_PORT", "2525"))
+    username = os.getenv("MAILTRAP_USERNAME")
+    password = os.getenv("MAILTRAP_PASSWORD")
+    from_email = os.getenv("MAILTRAP_FROM", "no-reply@test.local")
+
+    if not username or not password:
+        raise RuntimeError("Mailtrap credentials not configured")
+
+    msg = MIMEText(body)
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+
+    with smtplib.SMTP(host, port, timeout=10) as server:
+        server.starttls()
+        server.login(username, password)
+        server.send_message(msg)
+
+
 def notification_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     trace_id = str(uuid.uuid4())
@@ -54,8 +79,6 @@ def notification_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         return NotificationOutput(
             success=False,
-            candidate_email=None,
-            interviewer_email=None,
             error="Invalid input payload",
             trace=ToolTrace(
                 tool_name=TOOL_NAME,
@@ -87,8 +110,6 @@ def notification_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             return NotificationOutput(
                 success=False,
-                candidate_email=None,
-                interviewer_email=None,
                 error="User not found",
                 trace=ToolTrace(
                     tool_name=TOOL_NAME,
@@ -100,20 +121,22 @@ def notification_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
             ).model_dump()
 
-        message = (
-            f"Interview scheduled at {data.scheduled_time_utc} UTC "
-            f"between {candidate.email} and {interviewer.email}"
+        subject = "Interview Scheduled"
+        body = (
+            f"Interview scheduled at {data.scheduled_time_utc} UTC\n\n"
+            f"Candidate: {candidate.email}\n"
+            f"Interviewer: {interviewer.email}\n"
         )
 
-        print("[NOTIFICATION]", message)
-
+        
+        _send_email(candidate.email, subject, body)
+        
         finished_at = datetime.utcnow().isoformat()
 
         return NotificationOutput(
             success=True,
             candidate_email=candidate.email,
             interviewer_email=interviewer.email,
-            error=None,
             trace=ToolTrace(
                 tool_name=TOOL_NAME,
                 trace_id=trace_id,
@@ -125,12 +148,11 @@ def notification_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
         ).model_dump()
 
     except Exception as e:
+        print("NOTIFICATION ERROR:", repr(e))
         finished_at = datetime.utcnow().isoformat()
 
         return NotificationOutput(
             success=False,
-            candidate_email=None,
-            interviewer_email=None,
             error=str(e),
             trace=ToolTrace(
                 tool_name=TOOL_NAME,

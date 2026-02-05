@@ -76,7 +76,7 @@ def calendar_read_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
             db.query(Interview)
             .filter(
                 Interview.interviewer_id == data.interviewer_id,
-                Interview.status != "cancelled"
+                Interview.status == "scheduled"   
             )
             .all()
         )

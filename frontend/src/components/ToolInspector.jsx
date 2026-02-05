@@ -1,8 +1,50 @@
+import { useEffect, useRef, useState } from "react";
+
 export default function ToolInspector({ items }) {
+  const [value, setValue] = useState(items || []);
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if ((items || []).length !== 0) return;
+
+    const saved = localStorage.getItem("agent_chat_ui");
+    if (!saved) return;
+
+    try {
+      const s = JSON.parse(saved);
+      if (Array.isArray(s.toolLogs)) {
+        setValue(s.toolLogs);
+        restoredRef.current = true;
+      }
+    } catch {}
+  }, [items?.length]);
+
+  useEffect(() => {
+  if (!Array.isArray(items)) return;
+
+  setValue(items);
+
+  
+  if (items.length === 0) {
+    restoredRef.current = false;
+  }
+}, [items]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("agent_chat_ui");
+    if (!saved) return;
+
+    try {
+      const s = JSON.parse(saved);
+      s.toolLogs = value;
+      localStorage.setItem("agent_chat_ui", JSON.stringify(s));
+    } catch {}
+  }, [value]);
+
   return (
     <div className="h-64 overflow-y-auto p-4 bg-gradient-to-br from-indigo-200 via-sky-200 to-emerald-200">
       <div className="h-full rounded-3xl bg-gradient-to-br from-indigo-500/10 via-sky-500/10 to-emerald-500/10 shadow-xl backdrop-blur p-4">
-
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-400 text-white flex items-center justify-center shadow">
@@ -14,12 +56,12 @@ export default function ToolInspector({ items }) {
           </div>
 
           <span className="text-[11px] px-3 py-1 rounded-full font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 text-white shadow">
-            {items.length}
+            {value.length}
           </span>
         </div>
 
         <div className="space-y-3">
-          {items.map((t, i) => {
+          {value.map((t, i) => {
             const ok = t.status === "success";
 
             return (
@@ -56,7 +98,7 @@ export default function ToolInspector({ items }) {
             );
           })}
 
-          {items.length === 0 && (
+          {value.length === 0 && (
             <div className="h-24 flex flex-col items-center justify-center text-slate-600 text-xs gap-2">
               <div className="text-2xl">🧰</div>
               No tools used yet

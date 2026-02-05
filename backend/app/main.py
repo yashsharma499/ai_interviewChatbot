@@ -49,12 +49,7 @@ def chat(req: ChatRequest) -> Dict[str, Any]:
         "user_message": req.user_message
     }
 
-    final_state = None
-
-    for state in graph.stream(initial_state, stream_mode="values"):
-        final_state = state
-
-    result = final_state or {}
+    result = graph.invoke(initial_state) or {}
 
     response: Dict[str, Any] = {
         "conversation_id": conversation_id
@@ -67,7 +62,8 @@ def chat(req: ChatRequest) -> Dict[str, Any]:
         "conversation_state",
         "interview_id",
         "reason",
-        "trace"
+        "trace",
+        "success"
     ]:
         if key in result:
             response[key] = result[key]
