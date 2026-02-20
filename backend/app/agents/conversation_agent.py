@@ -3,8 +3,9 @@ import re
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from sqlalchemy.orm import joinedload
-from openai import OpenAI
+from groq import Groq
 
 from app.tools.memory_tool import load_state, save_state
 from app.tools.timezone_tool import timezone_normalize_tool
@@ -20,7 +21,7 @@ REQUIRED_FIELDS = [
     "timezone"
 ]
 
-_openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+_groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 class ConversationAgent:
@@ -45,16 +46,19 @@ class ConversationAgent:
         )
 
         try:
-            resp = _openai_client.chat.completions.create(
-                model="gpt-4o",
+            resp = _groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                temperature=0.3
+                temperature=0.2,
+                max_tokens=300,
             )
             return resp.choices[0].message.content.strip()
-        except Exception:
+        except Exception as e:
+            
+            print("Groq Error:", str(e))
             return "I can help you schedule, reschedule or cancel interviews."
 
     def _normalize_tz(self, tz: str) -> str:
@@ -156,16 +160,7 @@ class ConversationAgent:
                     "conversation_state": stored_state
                 }
 
-            if re.fullmatch(r"(hi|hello|hey|hii|heyy)", user_message, re.I):
-                save_state(conversation_id, stored_state)
-                return {
-                    "agent": self.name,
-                    "reply": "Hello! I can help you schedule, reschedule, or cancel interviews.",
-                    "is_complete": False,
-                    "conversation_state": stored_state
-                }
-
-            if not re.search(r"\b(interview|interviews|my interviews|list)\b", user_message, re.I):
+            if not stored_state.get("candidate_email") and not re.search(r"\b(interview|interviews|my interviews|list)\b", user_message, re.I):
                 save_state(conversation_id, stored_state)
                 return {
                     "agent": self.name,
@@ -197,9 +192,12 @@ class ConversationAgent:
 
             lines = []
             for i, item in enumerate(interviews, 1):
-                ts = item.scheduled_time.astimezone(
-                    ZoneInfo("Asia/Kolkata")
-                ).strftime("%d/%m/%Y, %I:%M %p") if item.scheduled_time else ""
+                ts = (
+                    item.scheduled_time.astimezone(
+                        ZoneInfo("Asia/Kolkata")
+                    ).strftime("%d/%m/%Y, %I:%M %p")
+                    if item.scheduled_time else ""
+                )
                 name = item.interviewer.name if item.interviewer else "Interviewer"
                 lines.append(f"{i}. {ts} with {name}")
 
@@ -291,7 +289,6 @@ class ConversationAgent:
                         .astimezone(ZoneInfo("Asia/Kolkata"))
                         .strftime("%d/%m/%Y, %I:%M %p")
                         if item["scheduled_time"] else ""
-                        
                     )
                     lines.append(f"{idx}. {ts} with {item['interviewer']}")
 

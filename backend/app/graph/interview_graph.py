@@ -48,6 +48,8 @@ def intent_node(state: InterviewState) -> InterviewState:
         stored = load_state(conversation_id) or {}
 
     if stored.get("awaiting_field"):
+        if stored.get("intent"):
+            state["intent"] = stored["intent"]
         return state
 
     result = intent_agent.run(state)
