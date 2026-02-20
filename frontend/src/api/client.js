@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const client = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: "https://interview-scheduler-backend-67r8.onrender.com",
   headers: {
     "Content-Type": "application/json"
   }
